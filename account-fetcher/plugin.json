@@ -1,0 +1,7 @@
+{
+  "id": "account-fetcher",
+  "name": "Account Fetcher",
+  "enabled": true,
+  "entry": "plugin.js",
+  "handleKey": "__EF_ACCOUNT_FETCHER_HANDLE__"
+}
