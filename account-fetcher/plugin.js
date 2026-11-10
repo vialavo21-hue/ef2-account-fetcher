@@ -985,7 +985,9 @@ function installOverlay(state, dumpJson) {
         I + " .ade-lb{color:#e6d8f0}",
         I + " .ade-btn{display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.22);border-radius:7px;background:#5a3a7a;color:#fff;font:inherit;font-weight:600;cursor:pointer}",
         I + " .ade-btn:hover{filter:brightness(1.15)}",
-        I + ".ade-collapsed > :not(.ade-title){display:none!important}"
+        I + ".ade-collapsed > :not(.ade-title){display:none!important}",
+        I + " .ade-src{margin-top:6px;font-size:10.5px;color:#a796b8;text-align:center;word-break:break-all}",
+        I + " .ade-src a{color:#cbb6e6}"
     ].join("");
     document.head.appendChild(style);
 
@@ -1010,7 +1012,9 @@ function installOverlay(state, dumpJson) {
         '<div class="ade-row" data-key="rebirthSetup"><span class="ade-ic">\u25CB</span><span class="ade-lb">Rebirth team + relics (open the rebirth screen)</span></div>' +
         '<div class="ade-row" data-key="runeDataManager"><span class="ade-ic">\u25CB</span><span class="ade-lb">Runes (open Guild Raid &gt; emblems)</span></div>' +
         '<div class="ade-row" data-key="profileFrames"><span class="ade-ic">\u25CB</span><span class="ade-lb">Profile frames (auto at login; else open Profile &gt; decoration)</span></div>' +
-        '<button class="ade-btn" type="button">Export JSON</button>';
+        '<button class="ade-btn" type="button">Export JSON</button>' +
+        // NEW 2026-11-10 (user): where to get updates. A plain link the player clicks; the plugin itself requests nothing.
+        '<div class="ade-src">Updates: <a href="https://github.com/vialavo21-hue/ef2-account-fetcher/releases" target="_blank" rel="noopener noreferrer">github.com/vialavo21-hue/ef2-account-fetcher</a></div>';
     document.body.appendChild(node);
 
     // Draggable header + persisted position + collapse toggle, matching the project's overlay
@@ -1075,6 +1079,8 @@ function installOverlay(state, dumpJson) {
     });
     var exportBtn = node.querySelector(".ade-btn");
     exportBtn.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+    var srcLink = node.querySelector(".ade-src a");
+    if (srcLink) { srcLink.addEventListener("pointerdown", function (e) { e.stopPropagation(); }); }
     exportBtn.addEventListener("click", function () { dumpJson(); });
 
     var timer = setInterval(function () {
