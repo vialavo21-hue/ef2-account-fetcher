@@ -844,7 +844,9 @@ function isRuneDataManager(o) {
 //   (keyed by the book's `base`, so a hero and its evolutions, a soldier and its tiers share one entry), with the
 //   couple-pet ×1.5 already applied (`calcHeroTransPoint`). `getTransPointMultiplier(kind)` = 1 + min(points,100)/100
 //   is what `applyRawAllyStats` multiplies every raid ally by.
-// - `barracks`: `GuildBarracksDataManager` (filled when the Guild > Barracks screen or a raid battle-ready popup
+// - `barracks`: NOT captured since 2026-11-10 (always null): raid planning takes every soldier corps as 30 at the top
+//   tier, the last tier when the tribe's awakening pet is 5★ (`awakenedTribes`), so no screen has to be opened for it.
+//   The reader below stays for reference. Was: `GuildBarracksDataManager` (filled when the Guild > Barracks screen or a raid battle-ready popup
 //   loads the states). Per unlocked barrack: its book row (`unitKindNums`, `plusLevel` per stage 0-4, `maxNum`) and
 //   the RAID pool's soldiers per stage as the raid would spawn them now (`computeSoldiers(book, state, instructors,
 //   Date.now(), "raid")`) and fully trained (`computeSoldiersFull`). The tribe's awakening pet at 5★ shifts every
@@ -899,6 +901,35 @@ function buildRaidExport(petManager, unitManager, barracksManager) {
         }
     } catch (e) {}
     return out;
+}
+
+// NEW 2026-11-10: the Runes row never ticked for some sessions. The capture above only sees RuneDataManager at the
+// moment the game constructs it (a property-definition hook); when the game builds it before this plugin attaches,
+// it is missed for the whole session. Backup: the game's own /rune/getAll answer ({runes:[{id,kindNum,grade,subId,
+// level,locked}], loadout:"ids|ids|...", presets}) as it passes JSON.parse or Response.json - the same object
+// RuneDataManager.applyGetAll reads. Read-only, nothing is requested. Returns {runes, slots} or null.
+function findRuneGetAll(value) {
+    var cands = [value, value && value.body, value && value.data];
+    for (var i = 0; i < cands.length; i++) {
+        var b = cands[i];
+        if (b && typeof b === "object" && Array.isArray(b.runes) && b.runes.length
+            && b.runes[0] && b.runes[0].kindNum != null && b.runes[0].id != null && b.runes[0].grade != null) {
+            // the game reads it as parseSlots(String(loadout ?? "")) - not always a string on the wire
+            var lo = b.loadout == null ? "" : (Array.isArray(b.loadout) ? b.loadout.map(function (x) { return Array.isArray(x) ? x.join(",") : String(x); }).join("|") : String(b.loadout));
+            var slots = lo.split("|");
+            var out = [];
+            for (var s = 0; s < 6; s++) {
+                out.push(String(slots[s] || "").split(",").map(Number).filter(function (n) { return isFinite(n) && n > 0; }));
+            }
+            var runes = new Map();
+            b.runes.forEach(function (r) {
+                runes.set(Number(r.id), { id: Number(r.id), kindNum: Number(r.kindNum), grade: Number(r.grade),
+                    subId: Number(r.subId != null ? r.subId : -1), level: Number(r.level || 0), locked: !!r.locked });
+            });
+            return { runes: runes, slots: out, fromResponse: true };
+        }
+    }
+    return null;
 }
 
 function buildRunesExport(runeDataManager) {
@@ -978,7 +1009,6 @@ function installOverlay(state, dumpJson) {
         '<div class="ade-row" data-key="medal"><span class="ade-ic">\u25CB</span><span class="ade-lb">Medal wallet (auto, passive)</span></div>' +
         '<div class="ade-row" data-key="rebirthSetup"><span class="ade-ic">\u25CB</span><span class="ade-lb">Rebirth team + relics (open the rebirth screen)</span></div>' +
         '<div class="ade-row" data-key="runeDataManager"><span class="ade-ic">\u25CB</span><span class="ade-lb">Runes (open Guild Raid &gt; emblems)</span></div>' +
-        '<div class="ade-row" data-key="guildBarracksDataManager"><span class="ade-ic">\u25CB</span><span class="ade-lb">Raid barracks (open Guild &gt; Barracks)</span></div>' +
         '<div class="ade-row" data-key="profileFrames"><span class="ade-ic">\u25CB</span><span class="ade-lb">Profile frames (auto at login; else open Profile &gt; decoration)</span></div>' +
         '<button class="ade-btn" type="button">Export JSON</button>';
     document.body.appendChild(node);
@@ -1038,7 +1068,9 @@ function installOverlay(state, dumpJson) {
     ["unitDataManager", "treasureDataManager", "petDataManager", "castleDataManager",
      "heroUpgradeManager", "maxWave", "questDataManager", "rebirthMedalManager",
      "spiritLandDataManager", "buffManager", "rankingDataManager", "ownRank",
-     "medal", "rebirthSetup", "profileFrames"].forEach(function (key) {
+     "medal", "rebirthSetup", "profileFrames", "runeDataManager"].forEach(function (key) {
+        // runeDataManager added 2026-11-10: the Runes row (2026-11-09) was missing here, so it never ticked even
+        // when the runes were captured and exported
         rows[key] = node.querySelector('[data-key="' + key + '"]');
     });
     var exportBtn = node.querySelector(".ade-btn");
@@ -1063,8 +1095,7 @@ function installOverlay(state, dumpJson) {
             medal: state.medal != null,
             rebirthSetup: !!(state.reviveTeamDataManager && state.reviveTeamDataManager.loaded),
             profileFrames: !!state.profileDeco,
-            runeDataManager: !!state.runeDataManager,
-            guildBarracksDataManager: !!(state.guildBarracksDataManager && state.guildBarracksDataManager.statesLoaded)
+            runeDataManager: !!(state.runeDataManager || state.runesFromResponse)
         };
         Object.keys(captured).forEach(function (key) {
             var row = rows[key];
@@ -1152,6 +1183,9 @@ export default {
                     // ProfileDecoManager.state holds. Two property reads per parse.
                     var deco = findProfileDecoState(parsed);
                     if (deco) { state.profileDeco = { state: deco, seenAt: new Date().toISOString(), source: "JSON.parse" }; }
+                    // NEW 2026-11-10: runes from the game's own /rune/getAll answer (backup for a missed RuneDataManager)
+                    var rg = findRuneGetAll(parsed);
+                    if (rg) { state.runesFromResponse = rg; }
                 } catch (e) {}
             }));
         }
@@ -1160,6 +1194,16 @@ export default {
         // /profileDeco/ calls (getState, save).
         var network = runtime && runtime.network;
         if (network && typeof network.onJsonResponse === "function") {
+            // NEW 2026-11-10: the /rune/getAll answer when read with Response.json() (backup for a missed RuneDataManager)
+            unsubscribers.push(gatedSubscription("account-fetcher", function () {
+                return network.onJsonResponse({ urlIncludes: "/rune/" }, async function (event) {
+                    if (efPluginOff("account-fetcher")) { return; }
+                    var body = null;
+                    try { body = await event.readJson(); } catch (e) { return; }
+                    var rg = findRuneGetAll(body);
+                    if (rg) { state.runesFromResponse = rg; }
+                });
+            }));
             unsubscribers.push(gatedSubscription("account-fetcher", function () {
                 return network.onJsonResponse({ urlIncludes: "/profileDeco/" }, async function (event) {
                     if (efPluginOff("account-fetcher")) { return; }
@@ -1190,13 +1234,6 @@ export default {
                 if (isUnitDataManager(candidate)) {
                     state.unitDataManager = candidate;
                     log.info("account-fetcher", "captured UnitDataManager (" + candidate.ownedUnitList.length + " owned hero kinds, " + candidate.list.length + " deployed)");
-                }
-            }));
-            unsubscribers.push(hooks.onObjectWithProperties(["bookList", "states", "statesLoaded"], function (candidate) {
-                if (efPluginOff("account-fetcher")) { return; }
-                if (isGuildBarracksDataManager(candidate)) {
-                    state.guildBarracksDataManager = candidate;
-                    log.info("account-fetcher", "captured GuildBarracksDataManager (" + candidate.bookList.length + " barrack books)");
                 }
             }));
             unsubscribers.push(hooks.onObjectWithProperties(["runes", "slots"], function (candidate) {
@@ -1308,9 +1345,11 @@ export default {
                 petPoint: petPoint,
                 castle: buildCastleExport(state.castleDataManager),
                 caps: buildCapsExport(state.heroUpgradeManager, state.unitDataManager),
-                runes: buildRunesExport(state.runeDataManager),
+                runes: buildRunesExport(state.runeDataManager || state.runesFromResponse),
+                // NEW 2026-11-10: where the runes came from (the game's rune data, or its /rune/getAll answer as a backup)
+                runesSource: state.runeDataManager ? "RuneDataManager" : (state.runesFromResponse ? "rune/getAll answer" : null),
                 // NEW 2026-11-09 — raid pet, ascend points per unit line, raid barracks (raid planning).
-                raid: buildRaidExport(state.petDataManager, state.unitDataManager, state.guildBarracksDataManager),
+                raid: buildRaidExport(state.petDataManager, state.unitDataManager, null),
                 goldPerSec: state.questDataManager && typeof state.questDataManager.goldPerSec === "number"
                     ? state.questDataManager.goldPerSec : null,
                 favoritePets: buildFavoritePetsExport(state.spiritLandDataManager),

@@ -70,4 +70,4 @@ Console alternative: `__EF_ACCOUNT_FETCHER__.dumpJson()` downloads the same file
 
 ## Raid section (2026-11-09)
 
-The export also carries `raid`: the raid pet the game applies, the game's own ascend points per unit line (couple-pet bonus included) and your raid barracks' soldiers per stage. Open **Guild > Barracks** once before exporting so the barracks are included; raid planning uses all three.
+The export also carries `raid`: the raid pet the game applies, the game's own ascend points per unit line (couple-pet bonus included) and which tribes have their awakening pet at 5 stars (that unlocks the last soldier tier). Nothing extra to open for it.
